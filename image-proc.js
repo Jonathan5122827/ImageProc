@@ -53,7 +53,7 @@ function loadImage(src){
   //prevent any non-image file type from being read.
   if(!src.type.match(/image.*/)){
     console.log("The dropped file is not an image: ", src.type); //output to the console (inspect element)
-	  scr.value = "";
+    scr.value = "";
     return;
   }
 
@@ -71,10 +71,10 @@ function loadImage(src){
           context2d.drawImage(image, 0, 0);
           currentBuffer = context2d.getImageData(0, 0, image.width, image.height);
     }
-  	image.onerror = function() {
-  		alert('Invalid image');
-  		console.log("The dropped file is not an image");
-  	};
+    image.onerror = function() {
+      alert('Invalid image');
+      console.log("The dropped file is not an image");
+    };
 
     image.src = e.target.result;
   };
