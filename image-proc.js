@@ -51,9 +51,9 @@ function onloadImage(file) {
 */
 function loadImage(src){
   //prevent any non-image file type from being read.
-  if(!src.type.match(/image.*/)){
-    console.log("The dropped file is not an image: ", src.type); //output to the console (inspect element)
-    scr.value = "";
+  if(!src.files[0].type.match(/image.*/)){
+    console.log("The dropped file is not an image: ", src.files[0].type); //output to the console (inspect element)
+    src.value = "";
     return;
   }
 
@@ -72,14 +72,15 @@ function loadImage(src){
           currentBuffer = context2d.getImageData(0, 0, image.width, image.height);
     }
     image.onerror = function() {
-      alert('Invalid image');
-      console.log("The dropped file is not an image");
+      //alert('Invalid image'); //this is an pop-up alert. Lets think about adding these other places
+      console.log("The dropped file is not a valid image");
+      src.value = "";
     };
 
     image.src = e.target.result;
   };
 
-  reader.readAsDataURL(src);
+  reader.readAsDataURL(src.files[0]);
 }
 
 /*
@@ -101,13 +102,10 @@ function onMouseWheel(event) {
 
     if (event.wheelDelta) { //change in mousewheel (for chrome)
         console.log(event.wheelDelta);
-        switch (event.wheelDelta) {
-					//add size depending on speed
-            case  150: toolRadious += 1; break;
-            //case  240: toolRadious += 2; break;
-					//remove size depending on speed
-            case -150: toolRadious -= 1; break;
-            //case -240: toolRadious -= 2; break;
+        if (event.wheelDelta < 0) {
+          toolRadious -= 1;
+				} else {
+          toolRadious += 1;
         }
     } else if (event.detail) { //for other browser
         if (event.detail < 0) {
@@ -132,7 +130,7 @@ function onMouseMove(event) {
     if (!currentBuffer) { //no value, exit
         return;
     }
-    if(toolID == 3) { //checking if we are in color pick mode
+    if(active_tool == toolID.PICK) { //checking if we are in color pick mode
 			//if we are we have to update the hovered color
 			//we also need to draw the tool
       drawTool(event.clientX, event.clientY, pick(event));
@@ -150,22 +148,16 @@ function onMouseDown(event) {
     var y = (event.clientY - rect.top) | 0;
     console.log(x, y); //we send a log of the clicked pixel to the console
 
-		/*
-			it might be better to do a switch here
-			we essentially are checking which tool is active
-			I think this could be optimized by using an array of bools
-			we'd need to know how many tools we have for that though
-		*/
-    switch(toolID) {
-        case 0:
+    switch(active_tool) {
+        case toolID.NONE:
             break;
-        case 1:
+        case toolID.SWIRL:
             swirl(currentBuffer, x, y, toolRadious);
             break;
-        case 2:
+        case toolID.LIQUIFY:
             liquify(currentBuffer, x, y, toolRadious);
             break;
-        case 3:
+        case toolID.PICK:
             var picked = pick(event);
             pickedColor.style.background = picked;
             pickedColor.textContent = picked;
@@ -173,18 +165,9 @@ function onMouseDown(event) {
         default:
             system.log("ERROR: toolID has invalid value.");
     }
-    /*if(doLiquify && !doSwirl && !doColorPick) {
-      liquify(currentBuffer, x, y, toolRadious);
-    } else if(!doLiquify && doSwirl && !doColorPick) {
-      swirl(currentBuffer, x, y, toolRadious);
-    } else if(!doLiquify && !doSwirl && doColorPick) {
-      var picked = pick(event);
-      pickedColor.style.background = picked;
-      pickedColor.textContent = picked;
-    }*/
+
     drawBuffer(); //upadte the image
 }
-
 
 //This next set are concerned with drawing
 /*
@@ -200,7 +183,7 @@ function drawTool(clientX, clientY, hovered) {
 
     drawBuffer(); //we update the image
 
-    if(toolID != 3) { //if we are not color picking
+    if(active_tool != toolID.PICK) { //if we are not color picking
 			//we draw a circle centered on the mouse
 			context2d.beginPath();
       context2d.arc(x, y, toolRadious, 0, 2 * Math.PI, false);
@@ -255,6 +238,30 @@ function copyImageData(srcPixels, dstPixels, width, height) {
 function createCompatibleImageData(imgData) {
     return context2d.createImageData(imgData.width, imgData.height);
 }
+
+/*
+  Here is an enumeration of the tools!
+
+  As more tools get added, please add them to this enum!
+*/
+const toolID = {
+  NONE: 0,
+  SWIRL: 1,
+  LIQUIFY: 2,
+  PICK: 3,
+  FILTER: 4,
+}
+/*
+	These next function just toggles the tools
+    If the selected tool is current active (toolID is equal to the ID of the tool we are toggling) turn it off, and set tool to none (toolID = 0)
+    (none == 0, swirl == 1, liquify == 2, color pick == 3)
+    If the selected tool is equal to anything else, switch to the new tool. (set toolID to the ID of the tool we are toggling)
+	These are called by their respective buttons in the html file
+*/
+function toggleTool(ID) {
+  active_tool = active_tool == ID ? toolID.NONE : ID;
+}
+
 /*
 	These are the tools and features of the program
 
@@ -479,15 +486,6 @@ function pick(event) {
 }
 
 /*
-	These next function just toggles the tools
-    If the selected tool is current active (toolID is equal to the ID of the tool we are toggling) turn it off, and set tool to none (toolID = 0)
-    (none == 0, swirl == 1, liquify == 2, clor pick == 3)
-    If the selected tool is equal to anything else, switch to the new tool. (set toolID to the ID of the tool we are toggling)
-	These are called by their respective buttons in the html file
-*/
-function toggleTool(ID) {toolID = toolID == ID ? 0 : ID; }
-
-/*
 	this function just returns a random string containg a path to an image file
 
 	called at the start of the program to grab a preset
@@ -539,9 +537,7 @@ const MAX_TOOL_RADIOUS = 80; //setting the max tool size
 	we can modify this so that we can display the current color for when we add a brush tool
 */
 var pickedColor = document.getElementById('selected-color');
-//these are the tool bools
-var toolID = 0; //no tool = 0, swirl = 1, liquify = 2, colorPick = 3, further tools could be added on this way
-//var doSwirl = false, doLiquify = false, doColorPick = false;
+var active_tool = toolID.NONE; //this is the active tool variable, set it using the enum created
 
 setEffectIntensity(40); //this is the default effectIntensity
 
