@@ -127,21 +127,50 @@ function onMouseWheel(event) {
     drawTool(event.clientX, event.clientY);
 }
 function onMouseMove(event) {
-    if (!currentBuffer) { //no value, exit
-        return;
+  if (!currentBuffer) { //no value, exit
+      return;
+  }
+
+  var rect = canvas.getBoundingClientRect(); //check within the bounds of the canvas
+  var x = (event.clientX - rect.left) | 0;
+  var y = (event.clientY - rect.top) | 0;
+
+  if(active_tool == toolID.PICK) { //checking if we are in color pick mode
+		//if we are we have to update the hovered color
+		//we also need to draw the tool
+    drawTool(event.clientX, event.clientY, pick(event));
+  } else if(mouse_down) {
+    switch (active_tool) {
+      case toolID.NONE:
+        break;
+      case toolID.LIQUIFY:
+        if(liquify_time < 10) {
+          liquify(currentBuffer, x, y, toolRadious);
+          //console.log(x, y); //we send a log of the clicked pixel to the console
+          drawBuffer(); //upadte the image
+          ++liquify_time;
+        }
+        break;
+      case toolID.BRUSH:
+        brush(x, y, toolRadious);
+        //console.log(x, y); //we send a log of the clicked pixel to the console
+        brushCache.x = x;
+        brushCache.y = y;
+        drawBuffer();
+        break;
+      default:
+        console.log("ERROR: toolID has invalid value.");
     }
-    if(active_tool == toolID.PICK) { //checking if we are in color pick mode
-			//if we are we have to update the hovered color
-			//we also need to draw the tool
-      drawTool(event.clientX, event.clientY, pick(event));
-    } else {
-      drawTool(event.clientX, event.clientY, '#000000')
-    }
+  } else {
+    drawTool(event.clientX, event.clientY, '#000000');
+  }
 }
 function onMouseDown(event) {
     if (!currentBuffer) { //no value, exit
         return;
     }
+
+    mouse_down = true;
 
     var rect = canvas.getBoundingClientRect(); //check within the bounds of the canvas
     var x = (event.clientX - rect.left) | 0;
@@ -162,11 +191,19 @@ function onMouseDown(event) {
             pickedColor.style.background = picked;
             pickedColor.textContent = picked;
             break;
+        case toolID.BRUSH:
+            brushCache.x = x;
+            brushCache.y = y;
+            break;
         default:
-            system.log("ERROR: toolID has invalid value.");
+            console.log("ERROR: toolID has invalid value.");
     }
 
     drawBuffer(); //upadte the image
+}
+function onMouseUp(event) {
+  mouse_down = false;
+  liquify_time = 0;
 }
 
 //This next set are concerned with drawing
@@ -177,6 +214,9 @@ function onMouseDown(event) {
 	there may be a more efficient way to handle this drawing part though
 */
 function drawTool(clientX, clientY, hovered) {
+    if(active_tool == toolID.NONE)
+      return;
+
     var rect = canvas.getBoundingClientRect(); //checking if within canvas
     var x = clientX - rect.left;
     var y = clientY - rect.top;
@@ -250,16 +290,47 @@ const toolID = {
   LIQUIFY: 2,
   PICK: 3,
   FILTER: 4,
+  BRUSH: 5,
 }
+/*
+  this is the enum for all the different brushes
+*/
+const brushSet = {
+  NONE: 0,
+  PENCIL: 1,
+  MARKER: 2,
+  PEARL: 3,
+  WIGGLE: 4,
+  PEN: 5,
+  HATCH: 6,
+  SPRAY: 7,
+}
+/*
+  this is a class to hold the previous position of the mouse for the brush functionality
+*/
+class BrushCache {
+  x;
+  y;
+}
+
 /*
 	These next function just toggles the tools
     If the selected tool is current active (toolID is equal to the ID of the tool we are toggling) turn it off, and set tool to none (toolID = 0)
     (none == 0, swirl == 1, liquify == 2, color pick == 3)
     If the selected tool is equal to anything else, switch to the new tool. (set toolID to the ID of the tool we are toggling)
-	These are called by their respective buttons in the html file
+	 These are called by their respective buttons in the html file
 */
 function toggleTool(ID) {
   active_tool = active_tool == ID ? toolID.NONE : ID;
+}
+/*
+	These next function just toggles the brushes
+    If the selected brush is current active (brushSet is equal to the ID of the brush we are toggling) turn it off, and set tool to none (brushSet = 0)
+    (none == 0, pencil == 1, marker == 2, pearl == 3, pen == 4, hatching == 5)
+	 These are called by their respective buttons in the html file
+*/
+function setBrush(ID) {
+  active_brush = active_brush == ID ? brushSet.NONE : ID;
 }
 
 /*
@@ -269,6 +340,9 @@ function toggleTool(ID) {
 		we should try making it able to be dragged
 	swirl: this tool literally swirls a portion of the image
 	pick: this is the color pick tool
+  filter: this function is called when the the filter button is pressed
+    It uses input from the four sliders next to the button to apply a filter.
+  brush: a tool to draw on the canvas baby!
 */
 function liquify(sourceImgData, x, y, radious) {
     var sourcePosition, destPosition;
@@ -484,6 +558,194 @@ function pick(event) {
 	const rgba = `rgba(${data[0]}, ${data[1]}, ${data[2]}, ${data[3] / 255})`; //we convert the data to a string
   return rgba; //return the rgba string usable in all instances where CSS would be used (can also convert to hex)
 }
+function colorFilter() {
+    var red = document.getElementById('redS').value;
+    var green = document.getElementById('greenS').value;
+    var blue = document.getElementById('blueS').value;
+    var opacity = document.getElementById('opS').value / 100.0;
+
+    var imageData = context2d.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    for (var i = 0; i < data.length; i += 4) {
+		    data[i] = opacity * red + (1 - opacity) * data[i];
+		    data[i + 1] = opacity * green + (1 - opacity) * data[i + 1];
+		    data[i + 2] = opacity * blue + (1 - opacity) * data[i + 2];
+	  }
+    currentBuffer = imageData;
+    drawBuffer();
+}
+function brush(x, y, radious) {
+  //this function just switches between the brush aux functions
+  switch (active_brush) {
+    case brushSet.PENCIL:
+      pencil(x, y, radious);
+      break;
+    case brushSet.MARKER:
+      marker(x, y, radious);
+      break;
+    case brushSet.PEARL:
+      pearl(x, y);
+      break;
+    //case brushSet.WIGGLE:
+      //wiggle(x, y);
+      //break;
+    case brushSet.PEN:
+      pen(x, y, radious);
+      break;
+    case brushSet.HATCH:
+      hatching(x, y);
+      break;
+    //case brushSet.SPRAY:
+      //spray(x, y);
+      //break;
+    default:
+      console.log("ERROR: brushSet has invalid value.")
+  }
+
+  //updating the buffer because otherwise it won't draw!
+  currentBuffer = context2d.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+/*
+  These are the brush auxillary functions, basically these do the actual work and brush just picks between them
+
+  pencil draws a stroke of toolradius wide
+  marker makes circles that should be slightly transparent, but I have yet to figure that one out
+  pearl makes circles too, but they are connected based on the mouse's distance from its previous point
+  pen is like a fountain pen, where its a flat line
+  hatching is pen, but angled based on the mouse's direction
+*/
+function pencil(x, y, radious) {
+    //drawing the lines
+    context2d.beginPath();
+    context2d.moveTo(brushCache.x, brushCache.y);
+    context2d.strokeStyle = pickedColor.textContent; //i want the color to match the pickedColor essentially
+    context2d.lineWidth = radious; //this is the tool's radious
+    context2d.lineCap = "round";
+    context2d.lineJoin = "round";
+    context2d.lineTo(x, y);
+    context2d.stroke();
+}
+function marker(x, y, radious) {
+  //drawing the circles
+  context2d.beginPath();
+  context2d.arc(x, y, radious, 0, 2 * Math.PI, false); //draw circles on the mouse
+  context2d.fillStyle = pickedColor.textContent; //i want the color to match the pickedColor essentially
+  context2d.closePath();
+  context2d.fill();
+}
+function pearl(x, y) {
+  distance = Math.sqrt(Math.pow(x - brushCache.x, 2) + Math.pow(y - brushCache.y, 2));
+  midX = (x + brushCache.x) / 2;
+  midY = (y + brushCache.y) / 2;
+
+  //drawing the cirlces
+  context2d.beginPath();
+  context2d.arc(midX, midY, distance, 0, 2 * Math.PI, false); //draw circles in the mid point of currPos and prevPos
+  context2d.fillStyle = pickedColor.textContent; //i want the color to match the pickedColor essentially
+  context2d.closePath();
+  context2d.fill();
+}
+/*
+  This brush is a squiggly line, but I can't get it to work. A lot of these brushes are based on p5js tool sets
+  since we are using canvajs it is a little harder to make some brushes work
+
+  I essentially brute forced most of the brushes, but this one used some p5 specific variables that canvas does not have
+
+function wiggle(x, y) {
+  distance = Math.sqrt(Math.pow(x - brushCache.x, 2) + Math.pow(y - brushCache.y, 2));
+  midX = (x + brushCache.x) / 2;
+  midY = (y + brushCache.y) / 2;
+
+  if(flip == 1) {
+    flip = 0;
+  } else {
+    flip = 1;
+  }
+
+  context2d.beginPath();
+  context2d.arc(midX, midY, distance, Math.atan2(y - brushCache.y, x - brushCache.x) + flip * Math.PI, Math.atan2(y - brushCache.y, x - brushCache.x) + flip * Math.PI, false);
+  context2d.strokeStyle = pickedColor.textContent; //i want the color to match the pickedColor essentially
+  context2d.lineWidth = 3;
+  context2d.closePath();
+  context2d.stroke();
+}
+*/
+function pen(x, y, radious) {
+  const lerps = 16; //lerps are linear interpolations, so this is the amount of them we are doing
+
+  for(let i = 0; i < lerps; ++i) {
+    //finding the lerp distances so that the pen looks more fluid
+    const lerpX = lerp(x, brushCache.x, i / lerps);
+    const lerpY = lerp(y, brushCache.y, i / lerps);
+
+    //drawing the lines
+    context2d.beginPath();
+    context2d.moveTo(lerpX + radious, lerpY + radious);
+    context2d.strokeStyle = pickedColor.textContent; //i want the color to match the pickedColor essentially
+    context2d.lineWidth = 5;
+    context2d.lineTo(lerpX - radious, lerpY - radious);
+    context2d.stroke();
+  }
+}
+function hatching(x, y) {
+  let speed = Math.abs(x - brushCache.x) + Math.abs(y - brushCache.y); //the speed determines the size
+
+  const lerps = 16; //lerps are linear interpolations, so this is the amount of them we are doing
+
+  for(let i = 0; i < lerps; ++i) {
+    //finding the lerp distances so that the pen looks more fluid
+    const lerpX = lerp(x, brushCache.x, i / lerps);
+    const lerpY = lerp(y, brushCache.y, i / lerps);
+
+    //drawing the lines
+    context2d.beginPath();
+    context2d.moveTo(lerpX - (y - brushCache.y), lerpY - (x - brushCache.x));
+    context2d.strokeStyle = pickedColor.textContent; //i want the color to match the pickedColor essentially
+    context2d.lineWidth = 5;
+    context2d.lineTo(lerpX + (y - brushCache.y), lerpY + (x - brushCache.x));
+    context2d.stroke();
+  }
+}
+/*
+  The same thing happened here as in wiggle, but this time I couldn't do a single point fill.
+  This one might have an easier solution than wiggle
+
+function spray(x, y, radious) {
+  let speed = Math.abs(x - brushCache.x) + Math.abs(y - brushCache.y); //the speed determines the size
+
+  const lerps = 10; //amount of lerps
+
+  const minRadius = radious; //setting the minimum of the spary size to the toolRadious
+  const sprayDensity = 80; //arbitrary density number
+  const r = speed + minRadius;
+
+  for(let i = 0; i < lerps; ++i) {
+    //finding the lerp distances so that the brush gets funky
+    const lerpX = lerp(x, brushCache.x, i / lerps);
+    const lerpY = lerp(y, brushCache.y, i / lerps);
+
+    for(let j = 0; j < sprayDensity; ++j) {
+      //making the brush extra FUNKY
+      const randX = Math.floor(Math.random() * (2 * r) - r);
+      const randY = Math.floor(Math.random() * 2 - 1) * Math.sqrt(r * r - randX * randX);
+
+      //drawing the pixel
+      context2d.fillStyle = pickedColor.textContent; //i want the color to match the pickedColor essentially
+      context2d.fillRect(lerpX + randX, lerpY + randY, 3, 3);
+    }
+  }
+}
+*/
+
+/*
+  this function does a really rudementary linear interpolation because I dunno how to do that yet
+
+  the lerp function returns a position based on a ratio and distance
+*/
+function lerp(init, final, ratio) {
+  return init + Math.sqrt(Math.pow(final - init, 2)) * ratio
+}
 
 /*
 	this function just returns a random string containg a path to an image file
@@ -501,26 +763,6 @@ function randomPreset() {
     if (option == 3)
         return 'Presets/monalisa.jpg'
 }
-/*
-    this function is called when the the filter button is pressed
-    It uses input from the four sliders next to the button to apply a filter.
-*/
-function colorFilter() {
-    var red = document.getElementById('redS').value;
-    var green = document.getElementById('greenS').value;
-    var blue = document.getElementById('blueS').value;
-    var opacity = document.getElementById('opS').value / 100.0;
-
-    var imageData = context2d.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    for (var i = 0; i < data.length; i += 4) {
-		data[i] = opacity * red + (1 - opacity) * data[i];
-		data[i + 1] = opacity * green + (1 - opacity) * data[i + 1];
-		data[i + 2] = opacity * blue + (1 - opacity) * data[i + 2];
-	}
-    currentBuffer = imageData;
-    drawBuffer();
-}
 
 var effectIntensity; //setting the default effectIntensity
 var canvasId = 'canvas1'; //this is the canvas ID
@@ -530,6 +772,10 @@ var canvas = document.getElementById(canvasId); //we are just grabbing canvas ba
 var context2d = canvas.getContext('2d'); //grabbing the context
 const MIN_TOOL_RADIOUS = 10; //setting min tool size
 const MAX_TOOL_RADIOUS = 80; //setting the max tool size
+var mouse_down = false; //this is a bool for dragging!
+var liquify_time = 0; //this is a count for dragging liquify, essentially a timer
+var brushCache = new BrushCache();
+var flip = 0;
 
 /*
 	This is a cell that holds the picked color
@@ -538,6 +784,7 @@ const MAX_TOOL_RADIOUS = 80; //setting the max tool size
 */
 var pickedColor = document.getElementById('selected-color');
 var active_tool = toolID.NONE; //this is the active tool variable, set it using the enum created
+var active_brush = brushSet.NONE; //this is the active brush variable, set it using the enum created
 
 setEffectIntensity(40); //this is the default effectIntensity
 
@@ -554,4 +801,5 @@ if (canvas.addEventListener) {
     canvas.addEventListener('mousewheel', onMouseWheel, false);
     canvas.addEventListener('DOMMouseScroll', onMouseWheel, false);
     canvas.addEventListener('mousedown', onMouseDown, false);
+    canvas.addEventListener('mouseup', onMouseUp, false);
 }
