@@ -27,6 +27,45 @@ class BrushCache {
   y;
 }
 
+class Change {
+    constructor() {
+        this.list = new Array();
+        this.it = 0;
+    }
+    Add(image) { //do Add(image) when you want to save a change made by a function. When index isn't newest change, delete all changes after that
+        this.list.splice(this.it);
+        this.list.push(image);
+        this.it++; console.log(this.list);
+    }
+    Update() { //called when you want to update canvas to this.list[this.it] (most recent change)
+        let image = this.list[this.it - 1];
+        canvas.width = image.width;
+        canvas.height = image.height;
+        context2d.drawImage(image, 0, 0);
+        currentBuffer = context2d.getImageData(0, 0, image.width, image.height); 
+    }
+    Reset() {
+        this.it = 1;
+        this.list.splice(1);
+        this.Update()
+    }
+    Clear() { //empty change and reset it
+        this.it = 0;
+        this.list.splice(0);
+    }
+    Undo() { //moves it to previous change
+        if(this.it > 1) {
+            this.it--;
+        }
+        this.Update()
+    }
+    Redo() { //moves it to next change
+        if(this.it < this.list.length) {
+            this.it++;
+        }
+        this.Update();
+    }
+}
 
 //This function tests an image's size against the size of the page.
 //If the image is in the bound, returns true/
@@ -56,6 +95,8 @@ function onloadImage(file) {
 		context2d.drawImage(img, 0, 0);
 		//setting the image data into the buffer that will be draw everytime there is a modification
 		currentBuffer = context2d.getImageData(0, 0, img.width, img.height);
+        C.Empty();
+        C.Add(image);
 	}
 }
 /*
@@ -87,6 +128,8 @@ function loadImage(src){
             // Adjust canvas size to the image dimensions
             canvas.width = image.width;
             canvas.height = image.height;
+
+            C.Add(image);
 
             //save a copy of loaded pixels
             context2d.drawImage(image, 0, 0);
@@ -123,7 +166,11 @@ function onMouseOut(event) {
     if (!currentBuffer) { //if the buffer doesnt have a value exit
         return;
     }
-    drawBuffer(); //otherwise update the buffer
+    if(mouse_down) {
+        drawBuffer(); //otherwise update the buffer
+        var image = new Image(); image.src = canvas.toDataURL();
+        C.Add(image);
+    }
 }
 function onMouseWheel(event) {
     if (!currentBuffer) { //no value, exit
@@ -238,6 +285,8 @@ function onMouseDown(event) {
 function onMouseUp(event) {
     mouse_down = false;
     liquify_time = 0;
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 
 //This next set are concerned with drawing
@@ -502,6 +551,8 @@ function liquify(sourceImgData, x, y, radious) {
 
     copyImageData(dstPixels, srcPixels, width, height);
 }
+
+var swirlDirection = 1;
 function swirl(sourceImgData, x, y, radious) {
   var sourcePosition, destPosition;
 
@@ -531,6 +582,7 @@ function swirl(sourceImgData, x, y, radious) {
   var offsetX, offsetY;
   var x, y, i;
 
+
   for(i = 0; i < 30; ++i) {
     //Iterate over the interest square region
     for (y = -radious; y < radious; ++y) {
@@ -555,7 +607,7 @@ function swirl(sourceImgData, x, y, radious) {
           //converting radians to degrees
           degrees = (alpha * 180.0) / Math.PI;
 					//add a change based on the distance from the center (this is the swirl formula)
-          degrees += r * i * (effectIntensity / 20);
+          degrees += swirlDirection * (radious - r) * i * (effectIntensity / 20);
 
           //Transform back from polar coordinates to Cartesian
           alpha = (degrees * Math.PI) / 180.0;
@@ -612,6 +664,7 @@ function pick(event) {
 	const rgba = `rgba(${data[0]}, ${data[1]}, ${data[2]}, ${data[3] / 255})`; //we convert the data to a string
   return rgba; //return the rgba string usable in all instances where CSS would be used (can also convert to hex)
 }
+
 function colorFilter() {
     var color = hexToRgb(document.getElementById('sColor').value);
     var opacity = parseInt(document.getElementById('opS').value) / 100.0;
@@ -625,7 +678,10 @@ function colorFilter() {
 	}
     currentBuffer = imageData;
     drawBuffer();
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
+
 function brush(x, y, radious) {
     //this function just switches between the brush aux functions
     var color = hexToRgb(document.getElementById('bColor').value);
@@ -743,6 +799,8 @@ function brightness() {
 	}
     currentBuffer = imageData;
     drawBuffer();
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 //called from contrast button, contrast val is controlled by conS slider
 //modifies r, g, and b values with given contrast value. positive values increase contrast, negatives decrease contrast.
@@ -759,6 +817,8 @@ function contrast() {
 	}
     currentBuffer = imageData;
     drawBuffer();
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 //called from warmth button, warmth val is controlled by warS slider
 //increases r and decreases b by 'warmth' value. Positives values warm image, negative cool image
@@ -773,6 +833,8 @@ function warmth() {
 	}
     currentBuffer = imageData;
     drawBuffer();
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 //called from tint button, tint val is controlled by tinS slider
 //increases g by tint value. Positives values tint (green), negative values de-tint (megenta)
@@ -786,6 +848,8 @@ function tint() {
 	}
     currentBuffer = imageData;
     drawBuffer();
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 //called by saturation button, saturation val is controlled by satS slider
 //modifies r,g,b values with given saturation value. 0 is greyscale, 1 is no change, 2 is double contrast
@@ -802,16 +866,18 @@ function saturation() {
 	}
     currentBuffer = imageData;
     drawBuffer();
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 
 
 //this functions flip the image by iterating through each pixel, and swapping that pixel with the pixel accros the axis (x or y) depending on whether direction is 'horizontal' or 'vertical'
-function flip(direction) {
+function flipI(direction) {
     var imageData = context2d.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
     switch(direction) {
-    case "horizontal":
+    case 'h':
         for (var y = 0; y < imageData.height; y += 1) {
             for (var x = 0; x < Math.floor(imageData.width / 2); x += 1) {
                 var left = getPixel(x, y, imageData.width); //left pixel data
@@ -823,7 +889,7 @@ function flip(direction) {
             }
         }
         break;
-    case "vertical":
+    case 'v':
         for (var x = 0; x < imageData.width; x += 1) {
             for (var y = 0; y < Math.floor(imageData.height / 2); y += 1) {
                 var top = getPixel(x, y, imageData.width); //top pixel data
@@ -841,6 +907,8 @@ function flip(direction) {
     }
     currentBuffer = imageData;
     drawBuffer();
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 function rotate(degree) {
     var swapWH = (degree != 180); //if degree is 180, don't swap, otherwise, swap height and width
@@ -880,6 +948,8 @@ function rotate(degree) {
     if(swapWH) { [canvas.width, canvas.height] = [canvas.height, canvas.width]; } //swap width and height of image if degree is 90 or -90
     currentBuffer = newImageData;
     drawBuffer(); //apply new image
+    var image = new Image(); image.src = canvas.toDataURL();
+    C.Add(image);
 }
 
 //gets pixelData give a distance x from the left, a distance y from the top, and a width of width. Returns data in form of [red, green, blue, alpha]
@@ -904,6 +974,10 @@ function randomPreset() {
     if (option == 3)
         return 'Presets/monalisa.jpg'
 }
+
+
+
+let C = new Change();
 
 var effectIntensity; //setting the default effectIntensity
 var canvasId = 'canvas1'; //this is the canvas ID
